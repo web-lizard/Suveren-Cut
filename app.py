@@ -238,6 +238,7 @@ def frame_studio(
         src_w=int(st.session_state.preview_src_w),
         src_h=int(st.session_state.preview_src_h),
         crop=crop_payload(),
+        top_percent=int(st.session_state.top_percent),
         key="suveren_layout_studio",
     )
     apply_editor_value(value)

@@ -21,6 +21,7 @@ def frame_editor(
     src_w: int,
     src_h: int,
     crop: dict[str, Any],
+    top_percent: int = 58,
     key: str | None = None,
 ) -> dict[str, Any] | None:
     image_path = Path(image_path)
@@ -32,6 +33,7 @@ def frame_editor(
         src_w=int(src_w),
         src_h=int(src_h),
         crop=crop,
+        top_percent=int(top_percent),
         key=key,
         default=None,
     )

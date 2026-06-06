@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #151923;
+      --panel2: #1d2330;
+      --text: #f4f4f5;
+      --muted: #a7adbb;
+      --green: #00ff88;
+      --orange: #ffb000;
+      --red: #ff4d5a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    .studio {
+      width: 100%;
+      min-height: 720px;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(0, 255, 136, 0.08), transparent 32%),
+        radial-gradient(circle at 95% 20%, rgba(255, 176, 0, 0.08), transparent 30%),
+        #0b0d12;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .topbar {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 4px 12px 4px;
+    }
+
+    .title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .title strong {
+      font-size: 18px;
+      letter-spacing: 0.02em;
+    }
+
+    .title span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button {
+      background: #222838;
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.14);
+      padding: 9px 13px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 650;
+    }
+
+    button:hover {
+      border-color: rgba(255,255,255,0.35);
+      background: #293246;
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, #00a95d, #057a47);
+      border-color: rgba(0,255,136,0.55);
+    }
+
+    button.danger {
+      background: #3a1d25;
+      border-color: rgba(255,77,90,0.45);
+      color: #ffd9dd;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(620px, 1fr) 360px;
+      gap: 16px;
+      height: 636px;
+    }
+
+    .source-panel,
+    .preview-panel {
+      background: rgba(21, 25, 35, 0.92);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 14px;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .panel-head {
+      height: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 12px;
+      background: rgba(255,255,255,0.035);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .canvas-wrap {
+      height: calc(100% - 40px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    canvas {
+      background: #000;
+      border-radius: 10px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .preview-wrap {
+      height: calc(100% - 40px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    #previewCanvas {
+      width: 300px;
+      height: 533px;
+      background: #000;
+      border-radius: 14px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.5);
+    }
+
+    .coords {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .coord-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 8px;
+      overflow: hidden;
+    }
+
+    .green { color: var(--green); }
+    .orange { color: var(--orange); }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 980px) {
+      .workspace {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      .source-panel { height: 460px; }
+      .preview-panel { height: 660px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="studio">
+    <div class="topbar">
+      <div class="title">
+        <strong>🦎 Sovereign Layout Studio</strong>
+        <span>Двигай рамки на исходнике. Справа сразу видно вертикальный stacked-preview.</span>
+      </div>
+      <div class="actions">
+        <button id="resetBtn" class="danger">Reset</button>
+        <button id="applyBtn" class="primary">Apply coordinates</button>
+      </div>
+    </div>
+
+    <div class="workspace">
+      <div class="source-panel">
+        <div class="panel-head">
+          <span>Source frame</span>
+          <span class="hint">Drag to move · corners to resize</span>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="sourceCanvas"></canvas>
+        </div>
+      </div>
+
+      <div class="preview-panel">
+        <div class="panel-head">
+          <span>Shorts 9:16 preview</span>
+          <span>top + bottom</span>
+        </div>
+        <div class="preview-wrap">
+          <canvas id="previewCanvas" width="300" height="533"></canvas>
+          <div class="coords">
+            <div class="coord-card">
+              <b class="green">TOP</b>
+              <pre id="topCoords"></pre>
+            </div>
+            <div class="coord-card">
+              <b class="orange">BOTTOM</b>
+              <pre id="bottomCoords"></pre>
+            </div>
+          </div>
+          <div class="hint">Зелёная рамка = верхний блок. Оранжевая рамка = нижний блок.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let args = null;
+let img = new Image();
+let srcW = 1920;
+let srcH = 1080;
+let displayW = 960;
+let displayH = 540;
+let scale = 1;
+
+let rects = [
+  { name: "top", x: 420, y: 0, w: 1080, h: 720, color: "#00ff88", fill: "rgba(0,255,136,0.16)" },
+  { name: "bottom", x: 0, y: 520, w: 1920, h: 560, color: "#ffb000", fill: "rgba(255,176,0,0.16)" }
+];
+
+let active = null;
+let mode = null;
+let handle = null;
+let startMouse = null;
+let startRect = null;
+
+const sourceCanvas = document.getElementById("sourceCanvas");
+const previewCanvas = document.getElementById("previewCanvas");
+const ctx = sourceCanvas.getContext("2d");
+const pctx = previewCanvas.getContext("2d");
+
+function post(type, data) {
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type,
+    ...data
+  }, "*");
+}
+
+function ready() {
+  post("streamlit:componentReady", { apiVersion: 1 });
+}
+
+function setHeight() {
+  post("streamlit:setFrameHeight", { height: 740 });
+}
+
+function setValue() {
+  const value = {
+    top: cropToSource(rects[0]),
+    bottom: cropToSource(rects[1])
+  };
+  post("streamlit:setComponentValue", { value });
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function cropToDisplay(r) {
+  return {
+    x: r.x / scale,
+    y: r.y / scale,
+    w: r.w / scale,
+    h: r.h / scale
+  };
+}
+
+function cropToSource(r) {
+  return {
+    x: Math.round(r.x),
+    y: Math.round(r.y),
+    w: Math.round(r.w),
+    h: Math.round(r.h)
+  };
+}
+
+function normalizeRect(r) {
+  r.w = Math.max(20, r.w);
+  r.h = Math.max(20, r.h);
+  r.x = clamp(r.x, 0, srcW - r.w);
+  r.y = clamp(r.y, 0, srcH - r.h);
+}
+
+function resizeCanvas() {
+  const wrap = sourceCanvas.parentElement;
+  const maxW = Math.max(620, wrap.clientWidth - 32);
+  const maxH = Math.max(360, wrap.clientHeight - 32);
+
+  const ratio = srcW / srcH;
+  displayW = Math.min(maxW, maxH * ratio);
+  displayH = displayW / ratio;
+
+  if (displayH > maxH) {
+    displayH = maxH;
+    displayW = displayH * ratio;
+  }
+
+  displayW = Math.round(displayW);
+  displayH = Math.round(displayH);
+  scale = srcW / displayW;
+
+  sourceCanvas.width = displayW;
+  sourceCanvas.height = displayH;
+}
+
+function drawRect(r, index) {
+  const d = cropToDisplay(r);
+
+  ctx.save();
+  ctx.fillStyle = r.fill;
+  ctx.strokeStyle = r.color;
+  ctx.lineWidth = 3;
+  ctx.fillRect(d.x, d.y, d.w, d.h);
+  ctx.strokeRect(d.x, d.y, d.w, d.h);
+
+  ctx.fillStyle = r.color;
+  ctx.font = "bold 15px system-ui";
+  ctx.fillText(index === 0 ? "TOP" : "BOTTOM", d.x + 10, d.y + 24);
+
+  const hs = 10;
+  const handles = getHandles(d);
+  ctx.fillStyle = r.color;
+  for (const h of handles) {
+    ctx.fillRect(h.x - hs/2, h.y - hs/2, hs, hs);
+  }
+  ctx.restore();
+}
+
+function getHandles(d) {
+  return [
+    { name: "nw", x: d.x, y: d.y },
+    { name: "ne", x: d.x + d.w, y: d.y },
+    { name: "sw", x: d.x, y: d.y + d.h },
+    { name: "se", x: d.x + d.w, y: d.y + d.h }
+  ];
+}
+
+function drawSource() {
+  ctx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+  ctx.drawImage(img, 0, 0, displayW, displayH);
+  drawRect(rects[0], 0);
+  drawRect(rects[1], 1);
+}
+
+function drawPreview() {
+  pctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  pctx.fillStyle = "#000";
+  pctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+  const topH = Math.round(previewCanvas.height * 0.58);
+  const bottomH = previewCanvas.height - topH;
+
+  drawCropToPreview(rects[0], 0, 0, previewCanvas.width, topH);
+  drawCropToPreview(rects[1], 0, topH, previewCanvas.width, bottomH);
+
+  pctx.strokeStyle = "rgba(255,255,255,0.24)";
+  pctx.lineWidth = 2;
+  pctx.beginPath();
+  pctx.moveTo(0, topH);
+  pctx.lineTo(previewCanvas.width, topH);
+  pctx.stroke();
+
+  document.getElementById("topCoords").textContent = JSON.stringify(cropToSource(rects[0]), null, 2);
+  document.getElementById("bottomCoords").textContent = JSON.stringify(cropToSource(rects[1]), null, 2);
+}
+
+function drawCropToPreview(r, dx, dy, dw, dh) {
+  const sx = clamp(r.x, 0, srcW - 2);
+  const sy = clamp(r.y, 0, srcH - 2);
+  const sw = clamp(r.w, 2, srcW - sx);
+  const sh = clamp(r.h, 2, srcH - sy);
+
+  const srcRatio = sw / sh;
+  const dstRatio = dw / dh;
+
+  let drawW = dw;
+  let drawH = dh;
+  let offX = 0;
+  let offY = 0;
+
+  if (srcRatio > dstRatio) {
+    drawH = dh;
+    drawW = dh * srcRatio;
+    offX = (dw - drawW) / 2;
+  } else {
+    drawW = dw;
+    drawH = dw / srcRatio;
+    offY = (dh - drawH) / 2;
+  }
+
+  pctx.save();
+  pctx.beginPath();
+  pctx.rect(dx, dy, dw, dh);
+  pctx.clip();
+  pctx.drawImage(img, sx, sy, sw, sh, dx + offX, dy + offY, drawW, drawH);
+  pctx.restore();
+}
+
+function drawAll() {
+  resizeCanvas();
+  drawSource();
+  drawPreview();
+  setHeight();
+}
+
+function mousePos(evt) {
+  const rect = sourceCanvas.getBoundingClientRect();
+  return {
+    x: (evt.clientX - rect.left),
+    y: (evt.clientY - rect.top)
+  };
+}
+
+function hitTest(pos) {
+  const hs = 14;
+
+  for (let i = rects.length - 1; i >= 0; i--) {
+    const d = cropToDisplay(rects[i]);
+    for (const h of getHandles(d)) {
+      if (Math.abs(pos.x - h.x) <= hs && Math.abs(pos.y - h.y) <= hs) {
+        return { index: i, mode: "resize", handle: h.name };
+      }
+    }
+    if (pos.x >= d.x && pos.x <= d.x + d.w && pos.y >= d.y && pos.y <= d.y + d.h) {
+      return { index: i, mode: "move", handle: null };
+    }
+  }
+
+  return null;
+}
+
+sourceCanvas.addEventListener("mousedown", (evt) => {
+  const pos = mousePos(evt);
+  const hit = hitTest(pos);
+  if (!hit) return;
+
+  active = hit.index;
+  mode = hit.mode;
+  handle = hit.handle;
+  startMouse = { x: pos.x * scale, y: pos.y * scale };
+  startRect = { ...rects[active] };
+});
+
+window.addEventListener("mousemove", (evt) => {
+  if (active === null) return;
+
+  const pos = mousePos(evt);
+  const mx = pos.x * scale;
+  const my = pos.y * scale;
+  const dx = mx - startMouse.x;
+  const dy = my - startMouse.y;
+  const r = rects[active];
+
+  if (mode === "move") {
+    r.x = startRect.x + dx;
+    r.y = startRect.y + dy;
+  }
+
+  if (mode === "resize") {
+    let x1 = startRect.x;
+    let y1 = startRect.y;
+    let x2 = startRect.x + startRect.w;
+    let y2 = startRect.y + startRect.h;
+
+    if (handle.includes("w")) x1 = startRect.x + dx;
+    if (handle.includes("e")) x2 = startRect.x + startRect.w + dx;
+    if (handle.includes("n")) y1 = startRect.y + dy;
+    if (handle.includes("s")) y2 = startRect.y + startRect.h + dy;
+
+    r.x = Math.min(x1, x2);
+    r.y = Math.min(y1, y2);
+    r.w = Math.abs(x2 - x1);
+    r.h = Math.abs(y2 - y1);
+  }
+
+  normalizeRect(r);
+  drawSource();
+  drawPreview();
+});
+
+window.addEventListener("mouseup", () => {
+  if (active !== null) {
+    setValue();
+  }
+  active = null;
+  mode = null;
+  handle = null;
+});
+
+document.getElementById("applyBtn").addEventListener("click", () => {
+  setValue();
+});
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  if (!args) return;
+  const crop = args.crop || {};
+  rects[0] = { name: "top", ...(crop.top || { x: 420, y: 0, w: 1080, h: 720 }), color: "#00ff88", fill: "rgba(0,255,136,0.16)" };
+  rects[1] = { name: "bottom", ...(crop.bottom || { x: 0, y: 520, w: 1920, h: 560 }), color: "#ffb000", fill: "rgba(255,176,0,0.16)" };
+  rects.forEach(normalizeRect);
+  drawAll();
+  setValue();
+});
+
+window.addEventListener("resize", drawAll);
+
+window.addEventListener("message", (event) => {
+  if (!event.data || event.data.type !== "streamlit:render") return;
+
+  args = event.data.args || {};
+  srcW = Number(args.src_w || 1920);
+  srcH = Number(args.src_h || 1080);
+
+  const crop = args.crop || {};
+  const top = crop.top || { x: 420, y: 0, w: 1080, h: 720 };
+  const bottom = crop.bottom || { x: 0, y: 520, w: 1920, h: 560 };
+
+  rects = [
+    { name: "top", ...top, color: "#00ff88", fill: "rgba(0,255,136,0.16)" },
+    { name: "bottom", ...bottom, color: "#ffb000", fill: "rgba(255,176,0,0.16)" }
+  ];
+  rects.forEach(normalizeRect);
+
+  img.onload = () => {
+    drawAll();
+    setValue();
+  };
+  img.src = args.image_data;
+});
+
+ready();
+setHeight();
+</script>
+</body>
+</html>

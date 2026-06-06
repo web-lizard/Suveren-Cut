@@ -18,10 +18,11 @@ DOWNLOADS_DIR = BASE_DIR / "downloads"
 OUTPUT_DIR = BASE_DIR / "output"
 WORK_DIR = BASE_DIR / "work"
 
+VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".m4v"}
 
 OUTPUT_MODE_LABELS = {
     "Оригинал 16:9 без кропа": "original_16_9",
-    "Shorts 9:16, тупой центр-кроп": "shorts_center_crop",
+    "Shorts 9:16, центр-кроп": "shorts_center_crop",
     "Shorts 9:16, стек: верх + низ": "shorts_stacked",
 }
 
@@ -53,6 +54,46 @@ def init_state() -> None:
     st.session_state.setdefault("preview_frame_path", "")
     st.session_state.setdefault("preview_src_w", 1920)
     st.session_state.setdefault("preview_src_h", 1080)
+
+
+def list_downloaded_videos() -> list[Path]:
+    if not DOWNLOADS_DIR.exists():
+        return []
+    items = [
+        path
+        for path in DOWNLOADS_DIR.rglob("*")
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTS
+    ]
+    return sorted(items, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def video_label(path: Path) -> str:
+    try:
+        size_mb = path.stat().st_size / 1024 / 1024
+        return f"{path.name} | {size_mb:.1f} MB"
+    except OSError:
+        return path.name
+
+
+def resolve_video_source(url: str, selected_local_video: Path | None, force_download: bool) -> tuple[Path, dict]:
+    if selected_local_video and selected_local_video.exists():
+        return selected_local_video, {
+            "title": selected_local_video.stem,
+            "webpage_url": url.strip(),
+            "source": "local",
+        }
+
+    if not url.strip():
+        raise RuntimeError("Нужно выбрать уже скачанное видео или вставить YouTube-ссылку.")
+
+    return download_youtube(url.strip(), DOWNLOADS_DIR, force=force_download)
+
+
+def default_preview_second(timecodes_text: str) -> int:
+    markers = parse_timecodes(timecodes_text)
+    if markers:
+        return int(markers[0].start + 5)
+    return 30
 
 
 def canvas_rect_from_crop(x: int, y: int, w: int, h: int, sx: float, sy: float, stroke: str, fill: str) -> dict:
@@ -153,15 +194,16 @@ def apply_canvas_layout(canvas_json: dict, src_w: int, src_h: int, display_w: in
     return True
 
 
-def prepare_preview_frame(url: str, frame_second: float, force_download: bool) -> None:
-    if not url.strip():
-        st.error("Вставь YouTube-ссылку.")
-        return
-
+def prepare_preview_frame(
+    url: str,
+    selected_local_video: Path | None,
+    force_download: bool,
+    frame_second: float,
+) -> None:
     ensure_ffmpeg()
 
     with st.status("Готовлю preview-кадр...", expanded=True) as status:
-        video_path, info = download_youtube(url.strip(), DOWNLOADS_DIR, force=force_download)
+        video_path, info = resolve_video_source(url, selected_local_video, force_download)
         st.write(f"Видео: `{video_path}`")
 
         src_w, src_h = get_video_size(video_path)
@@ -178,22 +220,45 @@ def prepare_preview_frame(url: str, frame_second: float, force_download: bool) -
         status.update(label="Preview-кадр готов.", state="complete")
 
 
-def frame_editor_block(url: str, force_download: bool) -> None:
+def frame_editor_block(
+    url: str,
+    selected_local_video: Path | None,
+    force_download: bool,
+    timecodes_text: str,
+) -> None:
     st.subheader("🎛️ Визуальная настройка кадра")
-    st.caption("Две рамки: зелёная = верхний слой, оранжевая = нижний слой. Можно двигать и растягивать.")
+    st.caption("Зелёная рамка = верхний слой. Оранжевая рамка = нижний слой. Двигай и растягивай мышкой.")
 
-    frame_second = st.number_input("Секунда для preview-кадра", min_value=0, max_value=99999, value=30, step=5)
+    source_hint = "Источник: "
+    if selected_local_video:
+        source_hint += f"локальный файл `{selected_local_video.name}`"
+    elif url.strip():
+        source_hint += "YouTube-ссылка, будет скачано при необходимости"
+    else:
+        source_hint += "выбери локальный файл или вставь YouTube-ссылку"
+    st.info(source_hint)
+
+    with st.expander("Тонкая настройка preview", expanded=False):
+        frame_second = st.number_input(
+            "Секунда кадра",
+            min_value=0,
+            max_value=99999,
+            value=default_preview_second(timecodes_text),
+            step=5,
+        )
+    if "frame_second" not in locals():
+        frame_second = default_preview_second(timecodes_text)
 
     col_prep, col_reset = st.columns([1, 1])
     with col_prep:
-        if st.button("Подготовить preview из YouTube", use_container_width=True):
-            prepare_preview_frame(url, frame_second, force_download)
+        if st.button("Подготовить preview", use_container_width=True):
+            prepare_preview_frame(url, selected_local_video, force_download, frame_second)
 
     with col_reset:
         if st.button("Сбросить crop к дефолту", use_container_width=True):
             for key, value in CROP_DEFAULTS.items():
                 st.session_state[key] = value
-            st.success("Crop сброшен. Перезапусти preview при необходимости.")
+            st.success("Crop сброшен.")
 
     frame_path = st.session_state.get("preview_frame_path") or ""
     if not frame_path or not Path(frame_path).exists():
@@ -254,10 +319,13 @@ def frame_editor_block(url: str, force_download: bool) -> None:
 
 init_state()
 
-st.set_page_config(page_title="Sovereign Cut 2.3", page_icon="🦎", layout="wide")
+st.set_page_config(page_title="Sovereign Cut 2.4", page_icon="🦎", layout="wide")
 
-st.title("🦎 Sovereign Cut 2.3")
-st.caption("YouTube-ссылка + таймкоды -> локальные нарезки + визуальная настройка кадра.")
+st.title("🦎 Sovereign Cut 2.4")
+st.caption("YouTube-ссылка или локальный скачанный файл -> таймкоды -> нарезки + визуальная настройка кадра.")
+
+downloaded_videos = list_downloaded_videos()
+download_labels = ["Не выбрано"] + [video_label(path) for path in downloaded_videos]
 
 with st.sidebar:
     st.header("Настройки")
@@ -282,7 +350,7 @@ with st.sidebar:
     else:
         max_duration_default, min_duration_default, last_clip_default = LENGTH_PRESETS[length_preset]
 
-    force_download = st.checkbox("Скачать заново, даже если файл уже есть", value=False)
+    force_download = st.checkbox("Скачать заново по ссылке", value=False)
     max_clips = st.number_input("Максимум клипов за прогон", min_value=1, max_value=100, value=12, step=1)
     max_duration = st.number_input("Максимальная длина клипа, сек", min_value=10, max_value=300, value=max_duration_default, step=5)
     min_duration = st.number_input("Минимальная длина клипа, сек", min_value=1, max_value=120, value=min_duration_default, step=1)
@@ -294,7 +362,7 @@ with st.sidebar:
     st.subheader("Stacked 9:16")
     st.session_state.top_percent = st.slider("Высота верхнего блока, %", min_value=25, max_value=80, value=int(st.session_state.top_percent), step=1)
 
-    with st.expander("Точные координаты"):
+    with st.expander("Точные координаты", expanded=False):
         st.session_state.top_x = st.number_input("top x", min_value=0, max_value=4000, value=int(st.session_state.top_x), step=10)
         st.session_state.top_y = st.number_input("top y", min_value=0, max_value=4000, value=int(st.session_state.top_y), step=10)
         st.session_state.top_w = st.number_input("top width", min_value=100, max_value=4000, value=int(st.session_state.top_w), step=10)
@@ -307,6 +375,20 @@ with st.sidebar:
 
 url = st.text_input("YouTube-ссылка на стрим", placeholder="https://www.youtube.com/watch?v=...")
 
+selected_index = st.selectbox(
+    "Уже скачанное видео из downloads/",
+    options=list(range(len(download_labels))),
+    format_func=lambda idx: download_labels[idx],
+    index=0,
+)
+
+selected_local_video = None
+if selected_index > 0:
+    selected_local_video = downloaded_videos[selected_index - 1]
+    st.success(f"Будет использован локальный файл: {selected_local_video.name}")
+elif downloaded_videos:
+    st.caption(f"В downloads/ найдено видео: {len(downloaded_videos)}. Можно выбрать файл и не качать заново.")
+
 timecodes = st.text_area(
     "Таймкоды",
     height=260,
@@ -318,13 +400,13 @@ editor_available = hasattr(st, "dialog")
 if editor_available:
     @st.dialog("🎛️ Настройка кадра")
     def frame_editor_dialog() -> None:
-        frame_editor_block(url, force_download)
+        frame_editor_block(url, selected_local_video, force_download, timecodes)
 
     if st.button("🎛️ Открыть визуальный редактор кадра", use_container_width=True):
         frame_editor_dialog()
 else:
     with st.expander("🎛️ Визуальный редактор кадра", expanded=False):
-        frame_editor_block(url, force_download)
+        frame_editor_block(url, selected_local_video, force_download, timecodes)
 
 col_a, col_b = st.columns([1, 1])
 
@@ -332,7 +414,7 @@ with col_a:
     preview_clicked = st.button("1. Проверить таймкоды", use_container_width=True)
 
 with col_b:
-    run_clicked = st.button("2. Скачать и нарезать", type="primary", use_container_width=True)
+    run_clicked = st.button("2. Нарезать", type="primary", use_container_width=True)
 
 if preview_clicked:
     markers = parse_timecodes(timecodes)
@@ -366,10 +448,6 @@ if preview_clicked:
 
 if run_clicked:
     try:
-        if not url.strip():
-            st.error("Вставь YouTube-ссылку.")
-            st.stop()
-
         markers = parse_timecodes(timecodes)
         if not markers:
             st.error("Таймкоды не распознаны. Нужны строки вида: 00:04:39 Название")
@@ -391,9 +469,11 @@ if run_clicked:
         WORK_DIR.mkdir(parents=True, exist_ok=True)
         (WORK_DIR / "last_timecodes.txt").write_text(timecodes, encoding="utf-8")
 
-        with st.status("Скачиваю видео через yt-dlp...", expanded=True) as status:
-            video_path, info = download_youtube(url.strip(), DOWNLOADS_DIR, force=force_download)
-            source_title = str(info.get("title") or "")
+        with st.status("Готовлю видео...", expanded=True) as status:
+            video_path, info = resolve_video_source(url, selected_local_video, force_download)
+            source_title = str(info.get("title") or video_path.stem)
+            source_url = str(info.get("webpage_url") or url.strip())
+
             st.write(f"Исходник: `{video_path}`")
             st.write(f"Название: {source_title or 'без названия'}")
 
@@ -433,7 +513,7 @@ if run_clicked:
                     {
                         "file": str(out),
                         "title": make_title(clip, channel_prefix=channel_prefix),
-                        "description": make_description(clip, source_title=source_title, source_url=url.strip()),
+                        "description": make_description(clip, source_title=source_title, source_url=source_url),
                         "tags": "shorts,mrlizard,suverenitet,lizardia,stream",
                         "start": seconds_to_stamp(clip.start),
                         "end": seconds_to_stamp(clip.end),

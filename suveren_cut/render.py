@@ -46,6 +46,32 @@ def get_video_size(video_path: Path) -> tuple[int, int]:
     return max(sizes, key=lambda pair: pair[0] * pair[1])
 
 
+def extract_frame(video_path: Path, output_path: Path, *, at_seconds: float = 0) -> Path:
+    ffmpeg_exe = get_ffmpeg_exe()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        ffmpeg_exe,
+        "-hide_banner",
+        "-y",
+        "-ss",
+        str(max(0, float(at_seconds))),
+        "-i",
+        str(video_path),
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        str(output_path),
+    ]
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        raise RuntimeError("frame extract failed\n\n" + proc.stderr[-3000:])
+
+    return output_path
+
+
 def _bounded_crop(
     *,
     src_w: int,

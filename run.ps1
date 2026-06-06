@@ -25,7 +25,7 @@ if (!$FfmpegPath) {
 }
 
 Write-Host "ffmpeg: $FfmpegPath" -ForegroundColor Green
-Write-Host "Sovereign Cut 2.2 starts at http://localhost:$Port" -ForegroundColor Cyan
+Write-Host "Sovereign Cut 2.3 starts at http://localhost:$Port" -ForegroundColor Cyan
 Write-Host "Stop server: Ctrl + C" -ForegroundColor Yellow
 
 & $VenvPython -m streamlit run app.py --server.port $Port --server.address localhost

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-import shutil
+import re
 import subprocess
 
+from .ffmpeg_tools import get_ffmpeg_exe
 from .naming import safe_filename, unique_path
 from .timecodes import Clip, seconds_to_stamp
 
 
 def ensure_ffmpeg() -> None:
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError("ffmpeg не найден в PATH. Поставь ffmpeg и перезапусти PowerShell.")
+    get_ffmpeg_exe()
 
 
 def _even(value: int, minimum: int = 2) -> int:
@@ -23,27 +23,27 @@ def _even(value: int, minimum: int = 2) -> int:
 
 
 def get_video_size(video_path: Path) -> tuple[int, int]:
-    ensure_ffmpeg()
+    ffmpeg_exe = get_ffmpeg_exe()
 
     cmd = [
-        "ffprobe",
-        "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=width,height",
-        "-of", "csv=s=x:p=0",
+        ffmpeg_exe,
+        "-hide_banner",
+        "-i",
         str(video_path),
     ]
 
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if proc.returncode != 0:
-        raise RuntimeError("ffprobe failed: " + proc.stderr[-2000:])
+    text = (proc.stderr or "") + "\n" + (proc.stdout or "")
 
-    raw = proc.stdout.strip()
-    if "x" not in raw:
-        raise RuntimeError(f"Не смогла определить размер видео через ffprobe: {raw!r}")
+    matches = re.findall(r"Video:.*?(\d{2,5})x(\d{2,5})", text)
+    if not matches:
+        matches = re.findall(r"(\d{3,5})x(\d{3,5})", text)
 
-    w, h = raw.split("x", 1)
-    return int(w), int(h)
+    if not matches:
+        raise RuntimeError("Could not detect video size from ffmpeg output.")
+
+    sizes = [(int(w), int(h)) for w, h in matches]
+    return max(sizes, key=lambda pair: pair[0] * pair[1])
 
 
 def _bounded_crop(
@@ -158,7 +158,7 @@ def render_clip(
     bottom_h: int = 540,
     top_percent: int = 58,
 ) -> Path:
-    ensure_ffmpeg()
+    ffmpeg_exe = get_ffmpeg_exe()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if vertical is not None:
@@ -185,24 +185,33 @@ def render_clip(
     )
 
     cmd = [
-        "ffmpeg",
+        ffmpeg_exe,
         "-hide_banner",
         "-y",
-        "-ss", start,
-        "-i", str(video_path),
-        "-t", duration,
+        "-ss",
+        start,
+        "-i",
+        str(video_path),
+        "-t",
+        duration,
     ]
 
     cmd += filter_args
     cmd += map_args
 
     cmd += [
-        "-c:v", "libx264",
-        "-preset", preset,
-        "-crf", str(crf),
-        "-c:a", "aac",
-        "-b:a", "160k",
-        "-movflags", "+faststart",
+        "-c:v",
+        "libx264",
+        "-preset",
+        preset,
+        "-crf",
+        str(crf),
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-movflags",
+        "+faststart",
         str(output_path),
     ]
 

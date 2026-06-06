@@ -5,12 +5,17 @@ from typing import Any
 
 from yt_dlp import YoutubeDL
 
+from .ffmpeg_tools import get_ffmpeg_location_for_ytdlp
 from .naming import safe_filename
 
 
 def _find_existing_by_id(download_dir: Path, video_id: str) -> Path | None:
     matches = sorted(
-        [p for p in download_dir.glob(f"*{video_id}*") if p.is_file() and p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mov"}],
+        [
+            p
+            for p in download_dir.glob(f"*{video_id}*")
+            if p.is_file() and p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mov"}
+        ],
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -45,11 +50,12 @@ def download_youtube(url: str, download_dir: Path, *, force: bool = False) -> tu
 
     opts = {
         "outtmpl": outtmpl,
-        "format": "bv*+ba/best",
+        "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "noplaylist": True,
         "quiet": False,
         "no_warnings": False,
+        "ffmpeg_location": get_ffmpeg_location_for_ytdlp(),
     }
 
     before = {p.resolve() for p in download_dir.glob("*") if p.is_file()}

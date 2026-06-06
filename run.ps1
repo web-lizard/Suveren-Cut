@@ -9,21 +9,23 @@ $Busy = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
 if ($Busy) {
     $PidOwner = $Busy[0].OwningProcess
     $Proc = Get-Process -Id $PidOwner -ErrorAction SilentlyContinue
-    throw "Порт $Port уже занят: PID=$PidOwner Process=$($Proc.ProcessName)"
+    throw "Port $Port is busy: PID=$PidOwner Process=$($Proc.ProcessName)"
 }
 
 if (!(Test-Path $VenvPython)) {
-    Write-Host "Виртуальное окружение не найдено. Создаю..." -ForegroundColor Yellow
+    Write-Host "Virtual environment not found. Creating..." -ForegroundColor Yellow
     python -m venv .venv
 }
 
 & $VenvPython -m pip install -r requirements.txt
 
-if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
-    throw "ffmpeg не найден. Поставь: winget install -e --id Gyan.FFmpeg, потом перезапусти PowerShell."
+$FfmpegPath = & $VenvPython -c "from suveren_cut.ffmpeg_tools import get_ffmpeg_exe; print(get_ffmpeg_exe())"
+if (!$FfmpegPath) {
+    throw "Bundled ffmpeg was not found."
 }
 
-Write-Host "Sovereign Cut 2.1 запускается на http://localhost:$Port" -ForegroundColor Cyan
-Write-Host "Чтобы остановить сервер: Ctrl + C" -ForegroundColor Yellow
+Write-Host "ffmpeg: $FfmpegPath" -ForegroundColor Green
+Write-Host "Sovereign Cut 2.2 starts at http://localhost:$Port" -ForegroundColor Cyan
+Write-Host "Stop server: Ctrl + C" -ForegroundColor Yellow
 
 & $VenvPython -m streamlit run app.py --server.port $Port --server.address localhost

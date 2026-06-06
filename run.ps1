@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 Set-Location -Path $PSScriptRoot
 
@@ -23,7 +23,7 @@ if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     throw "ffmpeg не найден. Поставь: winget install -e --id Gyan.FFmpeg, потом перезапусти PowerShell."
 }
 
-Write-Host "Sovereign Cut 2.0 запускается на http://localhost:$Port" -ForegroundColor Cyan
+Write-Host "Sovereign Cut 2.1 запускается на http://localhost:$Port" -ForegroundColor Cyan
 Write-Host "Чтобы остановить сервер: Ctrl + C" -ForegroundColor Yellow
 
 & $VenvPython -m streamlit run app.py --server.port $Port --server.address localhost

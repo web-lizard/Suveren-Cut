@@ -199,7 +199,7 @@
   <div class="studio">
     <div class="topbar">
       <div class="title">
-        <strong>🦎 Sovereign Layout Studio</strong>
+        <strong>🦎 Sovereign Layout Studio 2.7</strong>
         <span>Выбери активный слой. Двигается только он, чтобы рамки не дрались друг с другом.</span>
       </div>
       <div class="actions">
@@ -467,19 +467,48 @@ function mousePos(evt) {
   };
 }
 
-function hitTestActive(pos) {
-  const r = rects[activeLayer];
-  const d = cropToDisplay(r);
-  const hs = 16;
+function pointInsideDisplayRect(pos, d) {
+  return pos.x >= d.x && pos.x <= d.x + d.w && pos.y >= d.y && pos.y <= d.y + d.h;
+}
 
+function hitHandles(pos, d) {
+  const hs = 16;
   for (const h of getHandles(d)) {
     if (Math.abs(pos.x - h.x) <= hs && Math.abs(pos.y - h.y) <= hs) {
-      return { mode: "resize", handle: h.name };
+      return h.name;
+    }
+  }
+  return null;
+}
+
+function hitTestLayer(pos, layerIndex, allowHandles) {
+  const r = rects[layerIndex];
+  const d = cropToDisplay(r);
+
+  if (allowHandles) {
+    const handleName = hitHandles(pos, d);
+    if (handleName) {
+      return { index: layerIndex, mode: "resize", handle: handleName };
     }
   }
 
-  if (pos.x >= d.x && pos.x <= d.x + d.w && pos.y >= d.y && pos.y <= d.y + d.h) {
-    return { mode: "move", handle: null };
+  if (pointInsideDisplayRect(pos, d)) {
+    return { index: layerIndex, mode: "move", handle: null };
+  }
+
+  return null;
+}
+
+function hitTestSmart(pos) {
+  // 1. Active layer handles/body first, so resizing current frame stays stable.
+  let hit = hitTestLayer(pos, activeLayer, true);
+  if (hit) return hit;
+
+  // 2. Then inactive layers. This makes BOTTOM selectable by direct click.
+  for (let i = rects.length - 1; i >= 0; i--) {
+    if (i === activeLayer) continue;
+    hit = hitTestLayer(pos, i, false);
+    if (hit) return hit;
   }
 
   return null;
@@ -516,8 +545,12 @@ function resizeNoFlip(r, handleName, start, dx, dy) {
 
 sourceCanvas.addEventListener("mousedown", (evt) => {
   const pos = mousePos(evt);
-  const hit = hitTestActive(pos);
+  const hit = hitTestSmart(pos);
   if (!hit) return;
+
+  if (hit.index !== activeLayer) {
+    setActiveLayer(hit.index);
+  }
 
   dragging = true;
   mode = hit.mode;

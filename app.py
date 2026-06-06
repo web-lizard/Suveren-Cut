@@ -257,12 +257,12 @@ def frame_studio(
     )
 
 
-st.set_page_config(page_title="Sovereign Cut 2.5", page_icon="🦎", layout="wide")
+st.set_page_config(page_title="Sovereign Cut 2.7", page_icon="🦎", layout="wide")
 
 init_state()
 inject_css()
 
-st.title("🦎 Sovereign Cut 2.5")
+st.title("🦎 Sovereign Cut 2.7")
 st.caption("Локальный нарезочный комбайн: YouTube / downloads -> таймкоды -> stacked shorts.")
 
 downloaded_videos = list_downloaded_videos()

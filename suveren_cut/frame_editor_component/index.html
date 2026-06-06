@@ -199,14 +199,14 @@
   <div class="studio">
     <div class="topbar">
       <div class="title">
-        <strong>🦎 Sovereign Layout Studio 2.7</strong>
-        <span>Выбери активный слой. Двигается только он, чтобы рамки не дрались друг с другом.</span>
+        <strong>🦎 Sovereign Layout Studio 2.8</strong>
+        <span>Двигай рамки локально. Нажми Apply, чтобы применить координаты к нарезке.</span>
       </div>
       <div class="actions">
         <button id="topBtn" class="active-top">Edit TOP</button>
         <button id="bottomBtn">Edit BOTTOM</button>
         <button id="resetBtn" class="danger">Reset</button>
-        <button id="applyBtn" class="primary">Apply</button>
+        <button id="applyBtn" class="primary">Apply coordinates</button><span id="dirtyHint" class="hint">Saved</span>
       </div>
     </div>
 
@@ -238,7 +238,7 @@
               <pre id="bottomCoords"></pre>
             </div>
           </div>
-          <div class="hint">Углы растягивают активную рамку. Переворот рамки запрещён.</div>
+          <div class="hint">После настройки нажми Apply coordinates. До Apply Python не трогает рамки.</div>
         </div>
       </div>
     </div>
@@ -266,6 +266,11 @@ let handle = null;
 let startMouse = null;
 let startRect = null;
 
+let currentImageKey = null;
+let userTouched = false;
+let drawQueued = false;
+let lastSentPayload = "";
+
 const sourceCanvas = document.getElementById("sourceCanvas");
 const previewCanvas = document.getElementById("previewCanvas");
 const ctx = sourceCanvas.getContext("2d");
@@ -274,6 +279,7 @@ const pctx = previewCanvas.getContext("2d");
 const topBtn = document.getElementById("topBtn");
 const bottomBtn = document.getElementById("bottomBtn");
 const activeHint = document.getElementById("activeHint");
+const dirtyHint = document.getElementById("dirtyHint");
 
 function post(type, data) {
   window.parent.postMessage({
@@ -291,12 +297,32 @@ function setHeight() {
   post("streamlit:setFrameHeight", { height: 760 });
 }
 
-function setValue() {
-  const value = {
+function payloadValue() {
+  return {
     top: cropToSource(rects[0]),
     bottom: cropToSource(rects[1])
   };
+}
+
+function setDirty(isDirty) {
+  userTouched = isDirty;
+  if (!dirtyHint) return;
+  dirtyHint.textContent = isDirty ? "Unsaved changes" : "Saved";
+  dirtyHint.style.color = isDirty ? "#ffb000" : "#a7adbb";
+}
+
+function setValue() {
+  const value = payloadValue();
+  const encoded = JSON.stringify(value);
+
+  if (encoded === lastSentPayload) {
+    setDirty(false);
+    return;
+  }
+
+  lastSentPayload = encoded;
   post("streamlit:setComponentValue", { value });
+  setDirty(false);
 }
 
 function clamp(v, min, max) {
@@ -449,12 +475,25 @@ function drawCropToPreview(r, dx, dy, dw, dh) {
   pctx.restore();
 }
 
-function drawAll() {
+function drawAllNow() {
   resizeCanvas();
   drawSource();
   drawPreview();
   updateLayerButtons();
   setHeight();
+}
+
+function requestDraw() {
+  if (drawQueued) return;
+  drawQueued = true;
+  window.requestAnimationFrame(() => {
+    drawQueued = false;
+    drawAllNow();
+  });
+}
+
+function drawAll() {
+  requestDraw();
 }
 
 function mousePos(evt) {
@@ -582,16 +621,13 @@ window.addEventListener("mousemove", (evt) => {
     normalizeRect(r);
   }
 
-  drawSource();
-  drawPreview();
+  setDirty(true);
+  requestDraw();
 
   evt.preventDefault();
 });
 
 window.addEventListener("mouseup", () => {
-  if (dragging) {
-    setValue();
-  }
   dragging = false;
   mode = null;
   handle = null;
@@ -620,8 +656,8 @@ document.getElementById("resetBtn").addEventListener("click", () => {
   rects[0] = { name: "top", x: 420, y: 0, w: 1080, h: 720, color: "#00ff88", fill: "rgba(0,255,136,0.16)" };
   rects[1] = { name: "bottom", x: 0, y: 520, w: 1920, h: 560, color: "#ffb000", fill: "rgba(255,176,0,0.16)" };
   rects.forEach(normalizeRect);
+  setDirty(true);
   drawAll();
-  setValue();
 });
 
 window.addEventListener("resize", drawAll);
@@ -634,20 +670,35 @@ window.addEventListener("message", (event) => {
   srcH = Number(args.src_h || 1080);
   topPercent = Number(args.top_percent || 58);
 
-  const crop = args.crop || {};
-  const top = crop.top || { x: 420, y: 0, w: 1080, h: 720 };
-  const bottom = crop.bottom || { x: 0, y: 520, w: 1920, h: 560 };
+  const nextImageKey = String(args.image_data || "").slice(0, 256) + ":" + srcW + "x" + srcH;
+  const isNewImage = nextImageKey !== currentImageKey;
 
-  rects = [
-    { name: "top", ...top, color: "#00ff88", fill: "rgba(0,255,136,0.16)" },
-    { name: "bottom", ...bottom, color: "#ffb000", fill: "rgba(255,176,0,0.16)" }
-  ];
-  rects.forEach(normalizeRect);
+  // Critical fix:
+  // Streamlit reruns after setComponentValue and can send stale crop props.
+  // For the same image, never overwrite local rectangles from Python props.
+  // Only initialize from props when image actually changes.
+  if (isNewImage) {
+    currentImageKey = nextImageKey;
+    const crop = args.crop || {};
+    const top = crop.top || { x: 420, y: 0, w: 1080, h: 720 };
+    const bottom = crop.bottom || { x: 0, y: 520, w: 1920, h: 560 };
 
-  img.onload = () => {
+    rects = [
+      { name: "top", ...top, color: "#00ff88", fill: "rgba(0,255,136,0.16)" },
+      { name: "bottom", ...bottom, color: "#ffb000", fill: "rgba(255,176,0,0.16)" }
+    ];
+    rects.forEach(normalizeRect);
+    lastSentPayload = JSON.stringify(payloadValue());
+    setDirty(false);
+
+    img.onload = () => {
+      drawAllNow();
+    };
+    img.src = args.image_data;
+  } else {
+    // Same image: only redraw preview/layout, preserve local rectangles.
     drawAll();
-  };
-  img.src = args.image_data;
+  }
 });
 
 ready();

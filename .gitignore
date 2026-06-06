@@ -18,3 +18,5 @@ work/*
 *.log
 .DS_Store
 Thumbs.db
+
+SOVEREIGN_AUDIT.txt

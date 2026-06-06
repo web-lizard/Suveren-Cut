@@ -1,0 +1,7 @@
+﻿[server]
+port = 8517
+address = "localhost"
+headless = false
+
+[browser]
+gatherUsageStats = false
